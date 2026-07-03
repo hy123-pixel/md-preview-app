@@ -1,0 +1,34 @@
+# 构建产物
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/target/
+src-tauri/gen/schemas/*.json
+
+# 签名密钥（私钥不要提交）
+tauri-signing.key
+
+# 日志（可选，如果需要调试日志可以保留）
+src-tauri/target/*/logs/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# 环境变量
+.env
+.env.local
+
+# 测试
+*.test.ts
+*.spec.ts
+
+# 其他
+*.dmg
+*.app

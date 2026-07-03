@@ -1,0 +1,92 @@
+name: Build Windows
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri"
+          key: "windows"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Get version
+        id: version
+        shell: pwsh
+        run: |
+          $v = (Get-Content package.json | ConvertFrom-Json).version
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Build Tauri for Windows
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        run: |
+          npm run tauri build -- --target x86_64-pc-windows-msvc 2>&1 | tee tauri-build.log
+        shell: pwsh
+
+      - name: Sign Windows updater bundle
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        run: |
+          $VERSION = "${{ steps.version.outputs.version }}"
+          npm run tauri -- signer sign "src-tauri/target/release/bundle/msi/MD Preview_${VERSION}_x64_en-US.msi"
+        shell: pwsh
+
+      - name: List bundle files
+        if: always()
+        run: Get-ChildItem -Recurse src-tauri/target/release/bundle/
+        shell: pwsh
+
+      - name: Upload build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tauri-windows-build-logs
+          path: |
+            tauri-build.log
+            src-tauri/target/release/bundle/
+
+      - name: Upload Windows assets to release
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          repository: hy123-pixel/md-preview-app
+          token: ${{ secrets.RELEASE_TOKEN }}
+          files: |
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/msi/*.msi.sig
+            src-tauri/target/release/bundle/nsis/*.exe
+
+      - name: Generate and upload latest.json
+        if: success()
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          PYTHONIOENCODING: utf-8
+        run: python3 scripts/generate-latest-json.py ${{ steps.version.outputs.version }}
+        shell: pwsh

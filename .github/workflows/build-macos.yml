@@ -1,0 +1,91 @@
+name: Build macOS
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri"
+          key: "macos"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Get version
+        id: version
+        run: |
+          v=$(node -p "require('./package.json').version")
+          echo "version=$v" >> $GITHUB_OUTPUT
+
+      - name: Build Tauri for macOS
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        run: |
+          set -o pipefail
+          npm run tauri build 2>&1 | tee tauri-build.log
+
+      - name: Create and sign updater bundle
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          cd src-tauri/target/release/bundle/macos
+          tar -czf "../dmg/MD Preview_${VERSION}_aarch64.app.tar.gz" "MD Preview.app"
+          cd -
+          npm run tauri -- signer sign "src-tauri/target/release/bundle/dmg/MD Preview_${VERSION}_aarch64.app.tar.gz"
+
+      - name: List bundle files
+        if: always()
+        run: ls -R src-tauri/target/release/bundle/
+
+      - name: Upload build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tauri-macos-build-logs
+          path: |
+            tauri-build.log
+            src-tauri/target/release/bundle/
+
+      - name: Upload macOS assets to release
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          repository: hy123-pixel/md-preview-app
+          token: ${{ secrets.RELEASE_TOKEN }}
+          files: |
+            src-tauri/target/release/bundle/dmg/*.dmg
+            src-tauri/target/release/bundle/dmg/*.app.tar.gz
+            src-tauri/target/release/bundle/dmg/*.app.tar.gz.sig
+
+      - name: Generate and upload latest.json
+        if: success()
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          PYTHONIOENCODING: utf-8
+        run: python3 scripts/generate-latest-json.py ${{ steps.version.outputs.version }}
