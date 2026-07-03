@@ -83,16 +83,40 @@ def fetch_release(tag, token):
     return release
 
 
+def get_token():
+    # 优先从 md-preview-app 自身的 .env 读取
+    env_file = os.path.join(os.path.dirname(__file__), "..", ".env")
+    if os.path.isfile(env_file):
+        with open(env_file, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("RELEASE_TOKEN="):
+                    return line[len("RELEASE_TOKEN="):]
+
+    # 回退到 finallshell-app 的 .env
+    finallshell_env = os.path.join(os.path.dirname(__file__), "..", "..", "finalshell-app", ".env")
+    if os.path.isfile(finallshell_env):
+        with open(finallshell_env, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("RELEASE_TOKEN="):
+                    return line[len("RELEASE_TOKEN="):]
+
+    # 最后从环境变量获取
+    token = os.environ.get("RELEASE_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    if not token:
+        print("ERROR: RELEASE_TOKEN or GITHUB_TOKEN not set", file=sys.stderr)
+        sys.exit(1)
+    return token
+
+
 def main():
     if len(sys.argv) < 2:
         print("Usage: generate-latest-json.py <version>", file=sys.stderr)
         sys.exit(1)
 
     version = sys.argv[1]
-    token = os.environ.get("RELEASE_TOKEN") or os.environ.get("GITHUB_TOKEN")
-    if not token:
-        print("ERROR: RELEASE_TOKEN or GITHUB_TOKEN not set", file=sys.stderr)
-        sys.exit(1)
+    token = get_token()
 
     tag = f"v{version}"
     print(f"[generate-latest-json] Fetching release {tag}...")

@@ -32,6 +32,7 @@ POLL_MAX_WAIT = 30 * 60
 
 
 def get_token():
+    # 优先从 md-preview-app 自身的 .env 读取
     env_file = os.path.join(os.path.dirname(__file__), "..", ".env")
     if os.path.isfile(env_file):
         with open(env_file, "r", encoding="utf-8") as f:
@@ -40,6 +41,17 @@ def get_token():
                 if line.startswith("RELEASE_TOKEN="):
                     os.environ["RELEASE_TOKEN"] = line[len("RELEASE_TOKEN="):]
                     break
+
+    # 回退到 finallshell-app 的 .env（复用同目录下的 token）
+    if not os.environ.get("RELEASE_TOKEN") and not os.environ.get("GH_TOKEN") and not os.environ.get("GITHUB_TOKEN"):
+        finallshell_env = os.path.join(os.path.dirname(__file__), "..", "..", "finalshell-app", ".env")
+        if os.path.isfile(finallshell_env):
+            with open(finallshell_env, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("RELEASE_TOKEN="):
+                        os.environ["RELEASE_TOKEN"] = line[len("RELEASE_TOKEN="):]
+                        break
 
     for key in ("GH_TOKEN", "RELEASE_TOKEN", "GITHUB_TOKEN"):
         token = os.environ.get(key)
