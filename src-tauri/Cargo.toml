@@ -1,6 +1,6 @@
 [package]
 name = "md-preview-app"
-version = "1.0.0"
+version = "0.1.1"
 description = "MD Preview - Markdown Editor & Preview"
 authors = ["dt"]
 edition = "2021"
